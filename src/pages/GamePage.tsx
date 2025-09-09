@@ -271,22 +271,24 @@ const GamePage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-[calc(100vh-120px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-[calc(100vh-140px)]">
           {/* Main Board */}
           <div className="lg:col-span-3">
-            <Card className="h-full">
-              <CardHeader className="pb-2">
+            <Card className="h-full flex flex-col">
+              <CardHeader className="pb-2 flex-shrink-0">
                 <CardTitle>Plateau de jeu</CardTitle>
               </CardHeader>
-              <CardContent className="h-[calc(100%-60px)]">
-                <DndContext onDragEnd={handleDragEnd}>
-                  <Board
-                    tiles={myBoard}
-                    onTileDrop={(x, y, tileId) => {
-                      console.log('Tile dropped:', { x, y, tileId });
-                    }}
-                  />
-                </DndContext>
+              <CardContent className="flex-1 p-0 overflow-hidden">
+                <div className="w-full h-full min-h-[400px] max-h-[calc(100vh-200px)]">
+                  <DndContext onDragEnd={handleDragEnd}>
+                    <Board
+                      tiles={myBoard}
+                      onTileDrop={(x, y, tileId) => {
+                        console.log('Tile dropped:', { x, y, tileId });
+                      }}
+                    />
+                  </DndContext>
+                </div>
               </CardContent>
             </Card>
           </div>

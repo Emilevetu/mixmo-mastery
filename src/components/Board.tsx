@@ -50,20 +50,30 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
   const boardHeight = Math.max(GRID_SIZE, (maxY - minY + 10)) * CELL_SIZE;
 
   return (
-    <div className="w-full h-full bg-game-board rounded-lg overflow-hidden">
+    <div className="w-full h-full bg-game-board rounded-lg overflow-hidden relative">
       <TransformWrapper
-        initialScale={0.8}
-        minScale={0.3}
-        maxScale={2}
-        centerOnInit
-        wheel={{ step: 0.1 }}
+        initialScale={0.6}
+        minScale={0.2}
+        maxScale={3}
+        centerOnInit={true}
+        wheel={{ 
+          step: 0.15,
+          smoothStep: 0.005
+        }}
         panning={{ 
           disabled: false,
-          velocityDisabled: true 
+          velocityDisabled: false
         }}
+        doubleClick={{
+          disabled: false,
+          mode: "zoomIn",
+          step: 0.7
+        }}
+        limitToBounds={false}
+        centerZoomedOut={true}
       >
         <TransformComponent
-          wrapperClass="w-full h-full"
+          wrapperClass="w-full h-full cursor-move"
           contentClass="w-full h-full flex items-center justify-center"
         >
           <div
