@@ -246,17 +246,16 @@ const Dashboard = () => {
         .select()
         .single();
 
-      if (room) {
-        // Add both players to room
-        await supabase
-          .from('room_players')
-          .insert([
-            { room_id: room.id, user_id: user.id, seat: 1 },
-            { room_id: room.id, user_id: friendId, seat: 2 }
-          ]);
+        if (room) {
+          // Ajoute uniquement l'hôte; l'ami rejoindra via le lien et s'ajoutera lui-même (RLS oblige)
+          await supabase
+            .from('room_players')
+            .insert([
+              { room_id: room.id, user_id: user.id, seat: 1 }
+            ]);
 
-        navigate(`/room/${room.id}`);
-      }
+          navigate(`/room/${room.id}`);
+        }
     } catch (error) {
       toast({
         title: "Erreur",

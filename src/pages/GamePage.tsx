@@ -37,6 +37,36 @@ const GamePage = () => {
   const [roomInfo, setRoomInfo] = useState<any>(null);
   const [playersCount, setPlayersCount] = useState(0);
 
+  // Ensure current user is registered in the room (RLS-friendly)
+  const ensureJoined = async () => {
+    if (!user || !roomId) return;
+
+    // Check if already in room
+    const { data: existing } = await supabase
+      .from('room_players')
+      .select('user_id')
+      .eq('room_id', roomId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!existing) {
+      // Determine seat (1 if empty, else 2)
+      const { data: current } = await supabase
+        .from('room_players')
+        .select('seat')
+        .eq('room_id', roomId);
+      const seat = current && current.length >= 1 ? 2 : 1;
+      await supabase.from('room_players').insert({ room_id: roomId, user_id: user.id, seat });
+    }
+
+    // Mark as connected
+    await supabase
+      .from('room_players')
+      .update({ is_connected: true, last_seen: new Date().toISOString() })
+      .eq('room_id', roomId)
+      .eq('user_id', user.id);
+  };
+
   useEffect(() => {
     if (!user || !roomId) {
       navigate('/dashboard');
@@ -44,62 +74,77 @@ const GamePage = () => {
     }
 
     setRoomId(roomId);
-    
-    // Setup real-time subscriptions
-    const channel = supabase
-      .channel(`room:${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'rack_tiles',
-          filter: `room_id=eq.${roomId}`
-        },
-        () => fetchGameState()
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'board_tiles',
-          filter: `room_id=eq.${roomId}`
-        },
-        () => fetchGameState()
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'room_players',
-          filter: `room_id=eq.${roomId}`
-        },
-        () => {
-          fetchPlayers();
-          fetchOpponent();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'rooms',
-          filter: `id=eq.${roomId}`
-        },
-        () => fetchRoomInfo()
-      )
-      .subscribe();
 
-    fetchGameState();
-    fetchOpponent();
-    fetchPlayers();
-    fetchRoomInfo();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const setup = async () => {
+      await ensureJoined();
+
+      // Setup real-time subscriptions
+      channel = supabase
+        .channel(`room:${roomId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'rack_tiles',
+            filter: `room_id=eq.${roomId}`
+          },
+          () => fetchGameState()
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'board_tiles',
+            filter: `room_id=eq.${roomId}`
+          },
+          () => fetchGameState()
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'room_players',
+            filter: `room_id=eq.${roomId}`
+          },
+          () => {
+            fetchPlayers();
+            fetchOpponent();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'rooms',
+            filter: `id=eq.${roomId}`
+          },
+          () => fetchRoomInfo()
+        )
+        .subscribe();
+
+      fetchGameState();
+      fetchOpponent();
+      fetchPlayers();
+      fetchRoomInfo();
+    };
+
+    setup();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (user && roomId) {
+        supabase
+          .from('room_players')
+          .update({ is_connected: false, last_seen: new Date().toISOString() })
+          .eq('room_id', roomId)
+          .eq('user_id', user.id);
+      }
+      if (channel) supabase.removeChannel(channel);
     };
   }, [roomId, user]);
 
@@ -183,7 +228,7 @@ const GamePage = () => {
       `)
       .eq('room_id', roomId)
       .neq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     setOpponent(data);
   };
