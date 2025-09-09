@@ -30,6 +30,7 @@ export const BoardCell = ({ x, y, hasTile, className }: BoardCellProps) => {
         top: y * 45 + 2,
         width: 41,
         height: 41,
+        pointerEvents: 'auto', // Permettre les événements de pointer sur les cellules
       }}
     />
   );

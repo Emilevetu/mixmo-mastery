@@ -70,11 +70,11 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
           smoothStep: 0.005
         }}
         panning={{ 
-          disabled: false,
-          velocityDisabled: false
+          disabled: true, // Désactiver le panning pour éviter les conflits
+          velocityDisabled: true
         }}
         doubleClick={{
-          disabled: false,
+          disabled: true, // Désactiver le double-click pour éviter les conflits
           mode: "zoomIn",
           step: 0.8
         }}
@@ -82,7 +82,7 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
         centerZoomedOut={true}
       >
         <TransformComponent
-          wrapperClass="w-full h-full cursor-move"
+          wrapperClass="w-full h-full cursor-default"
           contentClass="w-full h-full flex items-center justify-center"
         >
           <div
@@ -103,6 +103,7 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
               `,
               backgroundSize: `${CELL_SIZE}px ${CELL_SIZE}px`,
               backgroundPosition: '0 0',
+              pointerEvents: 'none', // Empêcher les événements de pointer sur le conteneur
             }}
             onClick={handleClick}
           >
@@ -140,6 +141,7 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
                 top,
                 width: CELL_SIZE - 4,
                 height: CELL_SIZE - 4,
+                pointerEvents: 'auto', // Permettre les événements de pointer sur les tuiles
               }}
             >
             <Tile

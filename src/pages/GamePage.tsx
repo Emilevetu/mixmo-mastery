@@ -318,9 +318,11 @@ const GamePage = () => {
           return;
         }
 
-        // Check if position is already occupied
+        // Check if position is already occupied (but allow moving to the same position)
         const existingTile = myBoard.find(t => t.x === gridX && t.y === gridY);
-        if (existingTile) {
+        const isMovingSameTile = tileId.startsWith('board-') && existingTile?.bagSeq === bagSeq;
+        
+        if (existingTile && !isMovingSameTile) {
           toast({
             title: "Zone occupée",
             description: "Cette position est déjà occupée",
@@ -329,7 +331,14 @@ const GamePage = () => {
           return;
         }
 
-        await placeTileOnBoard(bagSeq, gridX, gridY, tileId);
+        // Handle tile placement from rack
+        if (tileId.startsWith('rack-')) {
+          await placeTileOnBoard(bagSeq, gridX, gridY, tileId);
+        }
+        // Handle tile movement on board
+        else if (tileId.startsWith('board-')) {
+          await moveTileOnBoard(bagSeq, gridX, gridY);
+        }
         
       } catch (error) {
         console.error('Error dropping tile:', error);
@@ -456,6 +465,37 @@ const GamePage = () => {
       }
     }
 
+    fetchGameState();
+  };
+
+  const moveTileOnBoard = async (bagSeq: number, newX: number, newY: number) => {
+    if (!user || !roomId) {
+      console.error('User or roomId not available');
+      return;
+    }
+
+    console.log('Moving tile on board:', { bagSeq, newX, newY });
+
+    // Update the tile position in the database
+    const { data, error } = await supabase
+      .from('board_tiles')
+      .update({ x: newX, y: newY })
+      .eq('room_id', roomId)
+      .eq('user_id', user.id)
+      .eq('bag_seq', bagSeq)
+      .select();
+
+    if (error) {
+      console.error('Error moving tile:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de déplacer la tuile",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('Tile moved successfully:', data);
     fetchGameState();
   };
 
