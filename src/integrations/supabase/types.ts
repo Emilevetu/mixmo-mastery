@@ -323,7 +323,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      user_is_in_room: {
+        Args: { target_room_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       event_type: "start" | "draw" | "place" | "unplace" | "mixmo" | "finish"
