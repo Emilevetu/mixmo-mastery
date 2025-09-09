@@ -166,17 +166,34 @@ const Dashboard = () => {
         status,
         created_at,
         expires_at,
-        profiles:from_user_id (
-          id,
-          pseudo
-        )
+        from_user_id
       `)
       .eq('to_user_id', user.id)
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false });
 
-    setGameInvitations(data || []);
+    const invitations = data || [];
+    if (invitations.length === 0) {
+      setGameInvitations([]);
+      return;
+    }
+
+    const senderIds = Array.from(new Set(invitations.map((i: any) => i.from_user_id)));
+    const { data: senderProfiles } = await supabase
+      .from('profiles')
+      .select('id, pseudo')
+      .in('id', senderIds);
+
+    const map = new Map<string, string>();
+    (senderProfiles || []).forEach((p: any) => map.set(p.id, p.pseudo));
+
+    setGameInvitations(
+      invitations.map((i: any) => ({
+        ...i,
+        senderPseudo: map.get(i.from_user_id) || 'Un joueur'
+      }))
+    );
   };
 
   const addFriend = async () => {
@@ -493,7 +510,7 @@ const Dashboard = () => {
                       </div>
                       <div>
                         <p className="font-medium">
-                          {invitation.profiles?.pseudo} vous invite à jouer !
+                          {invitation.senderPseudo || 'Un joueur'} vous invite à jouer !
                         </p>
                         <p className="text-sm text-muted-foreground">
                           Expire dans {Math.ceil((new Date(invitation.expires_at).getTime() - Date.now()) / (1000 * 60))} min
