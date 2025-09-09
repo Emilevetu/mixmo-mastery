@@ -33,6 +33,9 @@ const GamePage = () => {
   const { toast } = useToast();
   
   const [opponent, setOpponent] = useState<any>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [roomInfo, setRoomInfo] = useState<any>(null);
+  const [playersCount, setPlayersCount] = useState(0);
 
   useEffect(() => {
     if (!user || !roomId) {
@@ -65,10 +68,35 @@ const GamePage = () => {
         },
         () => fetchGameState()
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'room_players',
+          filter: `room_id=eq.${roomId}`
+        },
+        () => {
+          fetchPlayers();
+          fetchOpponent();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rooms',
+          filter: `id=eq.${roomId}`
+        },
+        () => fetchRoomInfo()
+      )
       .subscribe();
 
     fetchGameState();
     fetchOpponent();
+    fetchPlayers();
+    fetchRoomInfo();
 
     return () => {
       supabase.removeChannel(channel);
@@ -160,6 +188,43 @@ const GamePage = () => {
     setOpponent(data);
   };
 
+  const fetchPlayers = async () => {
+    if (!user || !roomId) return;
+
+    const { data } = await supabase
+      .from('room_players')
+      .select(`
+        user_id,
+        seat,
+        is_connected,
+        profiles (
+          pseudo
+        )
+      `)
+      .eq('room_id', roomId)
+      .order('seat');
+
+    if (data) {
+      setPlayers(data);
+      setPlayersCount(data.length);
+    }
+  };
+
+  const fetchRoomInfo = async () => {
+    if (!roomId) return;
+
+    const { data } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', roomId)
+      .single();
+
+    if (data) {
+      setRoomInfo(data);
+      setGameState(data.state);
+    }
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     
@@ -227,6 +292,35 @@ const GamePage = () => {
     }
   };
 
+  const handleStartGame = async () => {
+    if (!user || !roomId || !roomInfo || roomInfo.owner_id !== user.id) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('start-game', {
+        body: { roomId }
+      });
+
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Partie commencée !",
+          description: "Les tuiles ont été distribuées.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de commencer la partie",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-7xl mx-auto space-y-4">
@@ -242,6 +336,9 @@ const GamePage = () => {
           
           <div className="flex items-center gap-4">
             <Badge variant="outline">
+              Joueurs: {playersCount}/2
+            </Badge>
+            <Badge variant="outline">
               Sac: {bagCount} lettres
             </Badge>
             {opponent && (
@@ -252,22 +349,39 @@ const GamePage = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleRecall}
-              disabled={myBoard.length === 0}
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Rappel
-            </Button>
-            <Button
-              onClick={handleMixmo}
-              disabled={!mixmoEnabled}
-              className="bg-secondary hover:bg-secondary/90"
-            >
-              <Zap className="w-4 h-4 mr-2" />
-              MIXMO
-            </Button>
+            {gameState === 'waiting' && roomInfo?.owner_id === user?.id && playersCount === 2 && (
+              <Button
+                onClick={handleStartGame}
+                className="bg-primary hover:bg-primary/90"
+              >
+                Commencer la partie
+              </Button>
+            )}
+            {gameState === 'waiting' && roomInfo?.owner_id !== user?.id && (
+              <Badge variant="secondary">
+                En attente de l'hôte...
+              </Badge>
+            )}
+            {gameState === 'active' && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleRecall}
+                  disabled={myBoard.length === 0}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Rappel
+                </Button>
+                <Button
+                  onClick={handleMixmo}
+                  disabled={!mixmoEnabled}
+                  className="bg-secondary hover:bg-secondary/90"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  MIXMO
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -295,6 +409,34 @@ const GamePage = () => {
 
           {/* Side Panel */}
           <div className="space-y-4">
+            {/* Players in Room */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Joueurs dans la salle</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {players.map((player, index) => (
+                  <div key={player.user_id} className="flex items-center justify-between text-sm">
+                    <span>{player.profiles?.pseudo || `Joueur ${index + 1}`}</span>
+                    <div className="flex items-center gap-1">
+                      {player.user_id === user?.id && (
+                        <Badge variant="secondary" className="text-xs">Vous</Badge>
+                      )}
+                      {roomInfo?.owner_id === player.user_id && (
+                        <Badge variant="outline" className="text-xs">Hôte</Badge>
+                      )}
+                      <div className={`w-2 h-2 rounded-full ${player.is_connected ? 'bg-green-500' : 'bg-red-500'}`} />
+                    </div>
+                  </div>
+                ))}
+                {playersCount < 2 && (
+                  <div className="text-xs text-muted-foreground text-center py-2">
+                    En attente d'un second joueur...
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* My Rack */}
             <Card>
               <CardHeader className="pb-2">
