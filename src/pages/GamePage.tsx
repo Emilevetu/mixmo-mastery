@@ -192,6 +192,8 @@ const GamePage = () => {
       .eq('room_id', roomId)
       .eq('user_id', user.id);
 
+    console.log('Board data from database:', boardData);
+
     if (boardData) {
       const board = boardData.map((item: any) => ({
         bagSeq: item.bag_seq,
@@ -202,6 +204,7 @@ const GamePage = () => {
         y: item.y,
         locked: item.locked
       }));
+      console.log('Processed board data:', board);
       updateBoard(board);
     }
 
@@ -278,31 +281,49 @@ const GamePage = () => {
     const tileId = active.id.toString();
     const bagSeq = parseInt(tileId.replace(/^(rack-|board-)/, ''));
 
-    if (over.id === 'game-board') {
-      // Handle dropping on board
+    // Handle dropping on specific cell
+    if (over.id.toString().startsWith('cell-')) {
       try {
-        // For now, place tile at a default position until we implement precise positioning
-        // We'll use the center of the visible area
-        const gridX = Math.floor(Math.random() * 10) - 5; // Random position for testing
-        const gridY = Math.floor(Math.random() * 10) - 5;
+        const idParts = over.id.toString().split('-');
+        console.log('ID parts:', idParts);
+        
+        const xStr = idParts[1]; // "6" from "cell-6-5"
+        const yStr = idParts[2]; // "5" from "cell-6-5"
+        const gridX = parseInt(xStr);
+        const gridY = parseInt(yStr);
+
+        console.log('Dropping tile at coordinates:', { gridX, gridY, bagSeq, tileId });
+        console.log('Parsed coordinates:', { xStr, yStr, gridX, gridY });
+        console.log('Over ID:', over.id.toString());
+
+        // Validate coordinates
+        if (isNaN(gridX) || isNaN(gridY)) {
+          console.error('Invalid coordinates:', { gridX, gridY });
+          toast({
+            title: "Erreur",
+            description: "Coordonnées invalides",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Validate grid bounds (0-7 for 8x8 grid)
+        if (gridX < 0 || gridX > 7 || gridY < 0 || gridY > 7) {
+          console.error('Coordinates out of bounds:', { gridX, gridY });
+          toast({
+            title: "Erreur",
+            description: "Position hors de la grille (0-7)",
+            variant: "destructive",
+          });
+          return;
+        }
 
         // Check if position is already occupied
         const existingTile = myBoard.find(t => t.x === gridX && t.y === gridY);
         if (existingTile) {
-          // Try adjacent positions
-          for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-              const newX = gridX + dx;
-              const newY = gridY + dy;
-              if (!myBoard.find(t => t.x === newX && t.y === newY)) {
-                await placeTileOnBoard(bagSeq, newX, newY, tileId);
-                return;
-              }
-            }
-          }
           toast({
             title: "Zone occupée",
-            description: "Impossible de placer la tuile, zone occupée",
+            description: "Cette position est déjà occupée",
             variant: "destructive",
           });
           return;
@@ -329,31 +350,110 @@ const GamePage = () => {
   };
 
   const placeTileOnBoard = async (bagSeq: number, gridX: number, gridY: number, tileId: string) => {
+    console.log('placeTileOnBoard called with:', { bagSeq, gridX, gridY, tileId });
+    console.log('Current user:', user);
+    console.log('Current roomId:', roomId);
+    
+    // Check authentication
+    if (!user) {
+      console.error('No user authenticated');
+      toast({
+        title: "Erreur",
+        description: "Vous devez être connecté pour jouer",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!roomId) {
+      console.error('No room ID');
+      toast({
+        title: "Erreur",
+        description: "Aucune salle sélectionnée",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     // Get tile info from rack
     const rackTile = myRack.find(t => t.bagSeq === bagSeq);
-    if (!rackTile) return;
+    if (!rackTile) {
+      console.log('No rack tile found for bagSeq:', bagSeq);
+      return;
+    }
+
+    console.log('Found rack tile:', rackTile);
+
+    // Check if user is in the room
+    const { data: roomPlayer, error: roomPlayerError } = await supabase
+      .from('room_players')
+      .select('*')
+      .eq('room_id', roomId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (roomPlayerError || !roomPlayer) {
+      console.error('User not in room:', roomPlayerError);
+      toast({
+        title: "Erreur",
+        description: "Vous n'êtes pas dans cette salle",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('User is in room:', roomPlayer);
 
     // Insert tile on board
-    await supabase
+    const insertData = {
+      room_id: roomId,
+      user_id: user.id,
+      bag_seq: bagSeq,
+      x: gridX,
+      y: gridY,
+      as_letter: rackTile.letter,
+      locked: false
+    };
+
+    console.log('Inserting tile with data:', insertData);
+
+    const { data, error } = await supabase
       .from('board_tiles')
-      .insert({
-        room_id: roomId,
-        user_id: user.id,
-        bag_seq: bagSeq,
-        x: gridX,
-        y: gridY,
-        as_letter: rackTile.letter,
-        locked: false
+      .insert(insertData)
+      .select();
+
+    if (error) {
+      console.error('Error inserting tile:', error);
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
       });
+      toast({
+        title: "Erreur",
+        description: `Impossible de placer la tuile: ${error.message}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('Tile inserted successfully:', data);
 
     // Remove tile from rack if it came from rack
     if (tileId.startsWith('rack-')) {
-      await supabase
+      const { error: deleteError } = await supabase
         .from('rack_tiles')
         .delete()
         .eq('room_id', roomId)
         .eq('user_id', user.id)
         .eq('bag_seq', bagSeq);
+
+      if (deleteError) {
+        console.error('Error removing tile from rack:', deleteError);
+      } else {
+        console.log('Tile removed from rack successfully');
+      }
     }
 
     fetchGameState();
@@ -520,30 +620,29 @@ const GamePage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-[calc(100vh-140px)]">
-          {/* Main Board */}
-          <div className="lg:col-span-3">
-            <Card className="h-full flex flex-col">
-              <CardHeader className="pb-2 flex-shrink-0">
-                <CardTitle>Plateau de jeu</CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 p-0 overflow-hidden">
-                <div className="w-full h-full min-h-[400px] max-h-[calc(100vh-200px)]">
-                  <DndContext onDragEnd={handleDragEnd}>
+        <DndContext onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-[calc(100vh-140px)]">
+            {/* Main Board */}
+            <div className="lg:col-span-3">
+              <Card className="h-full flex flex-col">
+                <CardHeader className="pb-2 flex-shrink-0">
+                  <CardTitle>Plateau de jeu</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 p-0 overflow-hidden">
+                  <div className="w-full h-full min-h-[400px] max-h-[calc(100vh-200px)]">
                     <Board
                       tiles={myBoard}
                       onTileDrop={(x, y, tileId) => {
                         console.log('Tile dropped:', { x, y, tileId });
                       }}
                     />
-                  </DndContext>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-          {/* Side Panel */}
-          <div className="space-y-4">
+            {/* Side Panel */}
+            <div className="space-y-4">
             {/* Players in Room */}
             <Card>
               <CardHeader className="pb-2">
@@ -599,6 +698,7 @@ const GamePage = () => {
             </Card>
           </div>
         </div>
+        </DndContext>
       </div>
     </div>
   );

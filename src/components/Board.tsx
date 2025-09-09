@@ -2,6 +2,7 @@ import { useRef, useCallback } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { useDroppable } from '@dnd-kit/core';
 import { Tile } from './Tile';
+import { BoardCell } from './BoardCell';
 import { BoardTile } from '@/store/game';
 
 interface BoardProps {
@@ -17,8 +18,10 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
     id: 'game-board',
   });
 
-  const CELL_SIZE = 40;
-  const GRID_SIZE = 50; // 50x50 grid
+  const CELL_SIZE = 45; // Légèrement plus grand pour une meilleure UX
+  const GRID_SIZE = 8; // Grille fixe 8x8
+  const MIN_GRID_SIZE = 15; // Grille minimum plus petite
+  const PADDING = 3; // Padding autour du contenu
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (readOnly || !onTileDrop) return;
@@ -27,10 +30,13 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
     const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
     const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
     
-    // Only handle clicks on empty cells for now
-    const existingTile = tiles.find(t => t.x === x && t.y === y);
-    if (!existingTile) {
-      // This would be handled by drag and drop instead
+    // Check if click is within the 8x8 grid bounds
+    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+      // Only handle clicks on empty cells for now
+      const existingTile = tiles.find(t => t.x === x && t.y === y);
+      if (!existingTile) {
+        // This would be handled by drag and drop instead
+      }
     }
   }, [onTileDrop, readOnly, tiles]);
 
@@ -40,24 +46,27 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
     tileMap.set(`${tile.x},${tile.y}`, tile);
   });
 
-  // Calculate bounds to center the content
-  const minX = tiles.length > 0 ? Math.min(...tiles.map(t => t.x)) : -5;
-  const maxX = tiles.length > 0 ? Math.max(...tiles.map(t => t.x)) : 5;
-  const minY = tiles.length > 0 ? Math.min(...tiles.map(t => t.y)) : -5;
-  const maxY = tiles.length > 0 ? Math.max(...tiles.map(t => t.y)) : 5;
+  // Fixed 8x8 grid
+  const minX = 0;
+  const maxX = 7; // GRID_SIZE - 1
+  const minY = 0;
+  const maxY = 7; // GRID_SIZE - 1
 
-  const boardWidth = Math.max(GRID_SIZE, (maxX - minX + 10)) * CELL_SIZE;
-  const boardHeight = Math.max(GRID_SIZE, (maxY - minY + 10)) * CELL_SIZE;
+  console.log('Fixed 8x8 grid bounds:', { minX, maxX, minY, maxY, tilesCount: tiles.length });
+  console.log('Tiles data:', tiles);
+
+  const boardWidth = GRID_SIZE * CELL_SIZE;
+  const boardHeight = GRID_SIZE * CELL_SIZE;
 
   return (
     <div className="w-full h-full bg-game-board rounded-lg overflow-hidden relative">
       <TransformWrapper
-        initialScale={0.6}
-        minScale={0.2}
-        maxScale={3}
+        initialScale={0.8}
+        minScale={0.3}
+        maxScale={2.5}
         centerOnInit={true}
         wheel={{ 
-          step: 0.15,
+          step: 0.1,
           smoothStep: 0.005
         }}
         panning={{ 
@@ -67,7 +76,7 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
         doubleClick={{
           disabled: false,
           mode: "zoomIn",
-          step: 0.7
+          step: 0.8
         }}
         limitToBounds={false}
         centerZoomedOut={true}
@@ -83,6 +92,7 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
                 boardRef.current = node;
               }
             }}
+            data-board-container
             className="relative bg-game-board"
             style={{
               width: boardWidth,
@@ -92,30 +102,56 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
                 linear-gradient(to bottom, hsl(var(--game-tile-border)) 1px, transparent 1px)
               `,
               backgroundSize: `${CELL_SIZE}px ${CELL_SIZE}px`,
+              backgroundPosition: '0 0',
             }}
             onClick={handleClick}
           >
-            {/* Render tiles */}
-            {tiles.map((tile) => (
-              <div
-                key={`${tile.x}-${tile.y}`}
-                className="absolute"
-                style={{
-                  left: tile.x * CELL_SIZE + 2,
-                  top: tile.y * CELL_SIZE + 2,
-                  width: CELL_SIZE - 4,
-                  height: CELL_SIZE - 4,
-                }}
-              >
-                <Tile
-                  id={`board-${tile.bagSeq}`}
-                  letter={tile.asLetter || tile.letter}
-                  isJoker={tile.isJoker}
-                  locked={tile.locked}
-                  className="w-full h-full"
-                />
-              </div>
-            ))}
+        {/* Render drop zones for the fixed 8x8 grid */}
+        {Array.from({ length: GRID_SIZE }, (_, i) => i).map(x =>
+          Array.from({ length: GRID_SIZE }, (_, i) => i).map(y => {
+            const hasTile = tiles.some(t => t.x === x && t.y === y);
+            return (
+              <BoardCell
+                key={`cell-${x}-${y}`}
+                x={x}
+                y={y}
+                hasTile={hasTile}
+              />
+            );
+          })
+        )}
+        
+        {/* Render tiles */}
+        {tiles.map((tile) => {
+          const left = tile.x * CELL_SIZE + 2;
+          const top = tile.y * CELL_SIZE + 2;
+          
+          console.log(`Rendering tile ${tile.letter} at:`, {
+            absolute: { x: tile.x, y: tile.y },
+            position: { left, top }
+          });
+          
+          return (
+            <div
+              key={`${tile.x}-${tile.y}`}
+              className="absolute z-10"
+              style={{
+                left,
+                top,
+                width: CELL_SIZE - 4,
+                height: CELL_SIZE - 4,
+              }}
+            >
+            <Tile
+              id={`board-${tile.bagSeq}`}
+              letter={tile.asLetter || tile.letter}
+              isJoker={tile.isJoker}
+              locked={tile.locked}
+              className="w-full h-full"
+            />
+          </div>
+        );
+        })}
           </div>
         </TransformComponent>
       </TransformWrapper>
