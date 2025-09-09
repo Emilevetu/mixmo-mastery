@@ -276,22 +276,112 @@ const GamePage = () => {
     if (!over || !user || !roomId) return;
 
     const tileId = active.id.toString();
-    const bagSeq = parseInt(tileId.replace('rack-', ''));
+    const bagSeq = parseInt(tileId.replace(/^(rack-|board-)/, ''));
 
     if (over.id === 'game-board') {
       // Handle dropping on board
-      // This would need more sophisticated coordinate calculation
-      console.log('Drop on board:', tileId);
+      try {
+        // For now, place tile at a default position until we implement precise positioning
+        // We'll use the center of the visible area
+        const gridX = Math.floor(Math.random() * 10) - 5; // Random position for testing
+        const gridY = Math.floor(Math.random() * 10) - 5;
+
+        // Check if position is already occupied
+        const existingTile = myBoard.find(t => t.x === gridX && t.y === gridY);
+        if (existingTile) {
+          // Try adjacent positions
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              const newX = gridX + dx;
+              const newY = gridY + dy;
+              if (!myBoard.find(t => t.x === newX && t.y === newY)) {
+                await placeTileOnBoard(bagSeq, newX, newY, tileId);
+                return;
+              }
+            }
+          }
+          toast({
+            title: "Zone occupée",
+            description: "Impossible de placer la tuile, zone occupée",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        await placeTileOnBoard(bagSeq, gridX, gridY, tileId);
+        
+      } catch (error) {
+        console.error('Error dropping tile:', error);
+        toast({
+          title: "Erreur",
+          description: "Impossible de placer la tuile",
+          variant: "destructive",
+        });
+      }
     } else if (over.id === 'player-rack') {
       // Handle returning to rack
+      try {
+        await returnTileToRack(bagSeq);
+      } catch (error) {
+        console.error('Error returning tile to rack:', error);
+      }
+    }
+  };
+
+  const placeTileOnBoard = async (bagSeq: number, gridX: number, gridY: number, tileId: string) => {
+    // Get tile info from rack
+    const rackTile = myRack.find(t => t.bagSeq === bagSeq);
+    if (!rackTile) return;
+
+    // Insert tile on board
+    await supabase
+      .from('board_tiles')
+      .insert({
+        room_id: roomId,
+        user_id: user.id,
+        bag_seq: bagSeq,
+        x: gridX,
+        y: gridY,
+        as_letter: rackTile.letter,
+        locked: false
+      });
+
+    // Remove tile from rack if it came from rack
+    if (tileId.startsWith('rack-')) {
       await supabase
-        .from('board_tiles')
+        .from('rack_tiles')
         .delete()
         .eq('room_id', roomId)
+        .eq('user_id', user.id)
         .eq('bag_seq', bagSeq);
-      
-      fetchGameState();
     }
+
+    fetchGameState();
+  };
+
+  const returnTileToRack = async (bagSeq: number) => {
+    // Remove from board
+    await supabase
+      .from('board_tiles')
+      .delete()
+      .eq('room_id', roomId)
+      .eq('user_id', user.id)
+      .eq('bag_seq', bagSeq);
+
+    // Add back to rack if not already there
+    const isInRack = myRack.some(t => t.bagSeq === bagSeq);
+    if (!isInRack) {
+      await supabase
+        .from('rack_tiles')
+        .insert({
+          room_id: roomId,
+          user_id: user.id,
+          bag_seq: bagSeq,
+          idx: myRack.length
+        });
+    }
+    
+    fetchGameState();
   };
 
   const handleRecall = async () => {
