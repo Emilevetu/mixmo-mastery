@@ -57,6 +57,14 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        game: {
+          board: "hsl(var(--game-board))",
+          tile: "hsl(var(--game-tile))",
+          "tile-border": "hsl(var(--game-tile-border))",
+          joker: "hsl(var(--game-joker))",
+          valid: "hsl(var(--game-valid))",
+          invalid: "hsl(var(--game-invalid))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

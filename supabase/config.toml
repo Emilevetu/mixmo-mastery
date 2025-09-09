@@ -1,1 +1,13 @@
 project_id = "xtlexzzcvddcvynunwmo"
+
+[functions.create-room]
+verify_jwt = false
+
+[functions.start-game]
+verify_jwt = false
+
+[functions.validate-board]
+verify_jwt = false
+
+[functions.mixmo]
+verify_jwt = false
