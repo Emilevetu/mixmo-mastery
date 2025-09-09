@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/store/auth';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { UserPlus, Play, LogOut, Users } from 'lucide-react';
+import { UserPlus, Play, LogOut, Users, Clock } from 'lucide-react';
 
 interface NormalizedFriend {
   requester_id: string;
@@ -26,6 +26,7 @@ const Dashboard = () => {
   const [normalizedFriends, setNormalizedFriends] = useState<NormalizedFriend[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [gameInvitations, setGameInvitations] = useState<any[]>([]);
   
   const { user, signOut } = useAuthStore();
   const { toast } = useToast();
@@ -39,6 +40,26 @@ const Dashboard = () => {
     
     fetchProfile();
     fetchFriends();
+    fetchGameInvitations();
+
+    // Setup realtime subscription for invitations
+    const channel = supabase
+      .channel('game_invitations')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'game_invitations',
+          filter: `to_user_id=eq.${user.id}`
+        },
+        () => fetchGameInvitations()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user, navigate]);
 
   const fetchProfile = async () => {
@@ -132,6 +153,30 @@ const Dashboard = () => {
     }
 
     setNormalizedFriends(normalized);
+  };
+
+  const fetchGameInvitations = async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('game_invitations')
+      .select(`
+        id,
+        room_id,
+        status,
+        created_at,
+        expires_at,
+        profiles:from_user_id (
+          id,
+          pseudo
+        )
+      `)
+      .eq('to_user_id', user.id)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
+
+    setGameInvitations(data || []);
   };
 
   const addFriend = async () => {
@@ -233,10 +278,61 @@ const Dashboard = () => {
     });
   };
 
+  const acceptGameInvitation = async (invitationId: string, roomId: string) => {
+    if (!user) return;
+
+    try {
+      // Update invitation status
+      await supabase
+        .from('game_invitations')
+        .update({ status: 'accepted' })
+        .eq('id', invitationId);
+
+      // Join the room - this will be handled by GamePage's ensureJoined
+      navigate(`/room/${roomId}`);
+
+      toast({
+        title: "Invitation acceptée",
+        description: "Vous rejoignez la partie !",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible d'accepter l'invitation",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const declineGameInvitation = async (invitationId: string) => {
+    if (!user) return;
+
+    try {
+      await supabase
+        .from('game_invitations')
+        .update({ status: 'declined' })
+        .eq('id', invitationId);
+
+      fetchGameInvitations();
+
+      toast({
+        title: "Invitation refusée",
+        description: "L'invitation a été refusée",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de refuser l'invitation",
+        variant: "destructive",
+      });
+    }
+  };
+
   const createRoom = async (friendId: string) => {
     if (!user) return;
 
     try {
+      // Create room
       const { data: room } = await supabase
         .from('rooms')
         .insert({
@@ -246,16 +342,31 @@ const Dashboard = () => {
         .select()
         .single();
 
-        if (room) {
-          // Ajoute uniquement l'hôte; l'ami rejoindra via le lien et s'ajoutera lui-même (RLS oblige)
-          await supabase
-            .from('room_players')
-            .insert([
-              { room_id: room.id, user_id: user.id, seat: 1 }
-            ]);
+      if (room) {
+        // Add host to room
+        await supabase
+          .from('room_players')
+          .insert([
+            { room_id: room.id, user_id: user.id, seat: 1 }
+          ]);
 
-          navigate(`/room/${room.id}`);
-        }
+        // Send invitation to friend
+        await supabase
+          .from('game_invitations')
+          .insert({
+            from_user_id: user.id,
+            to_user_id: friendId,
+            room_id: room.id,
+            status: 'pending'
+          });
+
+        toast({
+          title: "Invitation envoyée",
+          description: "Votre ami a reçu une invitation à jouer !",
+        });
+
+        navigate(`/room/${room.id}`);
+      }
     } catch (error) {
       toast({
         title: "Erreur",
@@ -352,6 +463,57 @@ const Dashboard = () => {
                         onClick={() => acceptFriend(friend.other.id)}
                       >
                         Accepter
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Game Invitations */}
+        {gameInvitations.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">
+                🎮 Invitations de jeu ({gameInvitations.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {gameInvitations.map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-card border border-primary/20"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                        🎮
+                      </div>
+                      <div>
+                        <p className="font-medium">
+                          {invitation.profiles?.pseudo} vous invite à jouer !
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Expire dans {Math.ceil((new Date(invitation.expires_at).getTime() - Date.now()) / (1000 * 60))} min
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => acceptGameInvitation(invitation.id, invitation.room_id)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        Accepter
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => declineGameInvitation(invitation.id)}
+                      >
+                        Refuser
                       </Button>
                     </div>
                   </div>

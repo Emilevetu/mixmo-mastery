@@ -186,6 +186,44 @@ export type Database = {
           },
         ]
       }
+      game_invitations: {
+        Row: {
+          created_at: string | null
+          expires_at: string | null
+          from_user_id: string
+          id: string
+          room_id: string
+          status: string
+          to_user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          from_user_id: string
+          id?: string
+          room_id: string
+          status?: string
+          to_user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          from_user_id?: string
+          id?: string
+          room_id?: string
+          status?: string
+          to_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_invitations_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
