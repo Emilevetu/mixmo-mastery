@@ -148,6 +148,15 @@ const GamePage = () => {
     };
   }, [roomId, user]);
 
+  // Calculate mixmoEnabled locally for current player only
+  useEffect(() => {
+    const canMixmo = gameState === 'active' && 
+                    playersCount === 2 && 
+                    myRack.length === 0 && 
+                    bagCount >= 4;
+    setMixmoEnabled(canMixmo);
+  }, [gameState, playersCount, myRack.length, bagCount, setMixmoEnabled]);
+
   const fetchGameState = async () => {
     if (!user || !roomId) return;
 
