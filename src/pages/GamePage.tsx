@@ -23,6 +23,7 @@ const GamePage = () => {
     bagCount, 
     mixmoEnabled,
     gameState,
+    gridBounds,
     setRoomId,
     updateRack,
     updateBoard,
@@ -316,12 +317,12 @@ const GamePage = () => {
           return;
         }
 
-        // Validate grid bounds (0-7 for 8x8 grid)
-        if (gridX < 0 || gridX > 7 || gridY < 0 || gridY > 7) {
-          console.error('Coordinates out of bounds:', { gridX, gridY });
+        // Validate grid bounds using dynamic bounds
+        if (gridX < gridBounds.minX || gridX > gridBounds.maxX || gridY < gridBounds.minY || gridY > gridBounds.maxY) {
+          console.error('Coordinates out of bounds:', { gridX, gridY, gridBounds });
           toast({
             title: "Erreur",
-            description: "Position hors de la grille (0-7)",
+            description: `Position hors de la grille (${gridBounds.minX}-${gridBounds.maxX}, ${gridBounds.minY}-${gridBounds.maxY})`,
             variant: "destructive",
           });
           return;

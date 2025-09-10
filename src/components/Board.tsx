@@ -3,7 +3,9 @@ import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { useDroppable } from '@dnd-kit/core';
 import { Tile } from './Tile';
 import { BoardCell } from './BoardCell';
-import { BoardTile } from '@/store/game';
+import { BoardTile, useGameStore } from '@/store/game';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 
 interface BoardProps {
   tiles: BoardTile[];
@@ -13,32 +15,31 @@ interface BoardProps {
 
 export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
   const boardRef = useRef<HTMLDivElement>(null);
+  const { gridBounds, expandGrid } = useGameStore();
   
   const { setNodeRef } = useDroppable({
     id: 'game-board',
   });
 
   const CELL_SIZE = 45; // Légèrement plus grand pour une meilleure UX
-  const GRID_SIZE = 8; // Grille fixe 8x8
-  const MIN_GRID_SIZE = 15; // Grille minimum plus petite
   const PADDING = 3; // Padding autour du contenu
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (readOnly || !onTileDrop) return;
     
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
-    const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+    const x = Math.floor((e.clientX - rect.left) / CELL_SIZE) + gridBounds.minX;
+    const y = Math.floor((e.clientY - rect.top) / CELL_SIZE) + gridBounds.minY;
     
-    // Check if click is within the 8x8 grid bounds
-    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+    // Check if click is within the dynamic grid bounds
+    if (x >= gridBounds.minX && x <= gridBounds.maxX && y >= gridBounds.minY && y <= gridBounds.maxY) {
       // Only handle clicks on empty cells for now
       const existingTile = tiles.find(t => t.x === x && t.y === y);
       if (!existingTile) {
         // This would be handled by drag and drop instead
       }
     }
-  }, [onTileDrop, readOnly, tiles]);
+  }, [onTileDrop, readOnly, tiles, gridBounds]);
 
   // Create a map of tile positions
   const tileMap = new Map<string, BoardTile>();
@@ -46,17 +47,17 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
     tileMap.set(`${tile.x},${tile.y}`, tile);
   });
 
-  // Fixed 8x8 grid
-  const minX = 0;
-  const maxX = 7; // GRID_SIZE - 1
-  const minY = 0;
-  const maxY = 7; // GRID_SIZE - 1
+  // Dynamic grid bounds
+  const { minX, maxX, minY, maxY } = gridBounds;
+  const gridWidth = maxX - minX + 1;
+  const gridHeight = maxY - minY + 1;
 
-  console.log('Fixed 8x8 grid bounds:', { minX, maxX, minY, maxY, tilesCount: tiles.length });
+  console.log('Dynamic grid bounds:', { minX, maxX, minY, maxY, tilesCount: tiles.length });
   console.log('Tiles data:', tiles);
+  console.log('Grid dimensions:', { gridWidth, gridHeight });
 
-  const boardWidth = GRID_SIZE * CELL_SIZE;
-  const boardHeight = GRID_SIZE * CELL_SIZE;
+  const boardWidth = gridWidth * CELL_SIZE;
+  const boardHeight = gridHeight * CELL_SIZE;
 
   return (
     <div className="w-full h-full bg-game-board rounded-lg overflow-hidden relative">
@@ -107,9 +108,9 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
             }}
             onClick={handleClick}
           >
-        {/* Render drop zones for the fixed 8x8 grid */}
-        {Array.from({ length: GRID_SIZE }, (_, i) => i).map(x =>
-          Array.from({ length: GRID_SIZE }, (_, i) => i).map(y => {
+        {/* Render drop zones for the dynamic grid */}
+        {Array.from({ length: gridWidth }, (_, i) => minX + i).map(x =>
+          Array.from({ length: gridHeight }, (_, i) => minY + i).map(y => {
             const hasTile = tiles.some(t => t.x === x && t.y === y);
             return (
               <BoardCell
@@ -117,6 +118,7 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
                 x={x}
                 y={y}
                 hasTile={hasTile}
+                gridBounds={gridBounds}
               />
             );
           })
@@ -124,12 +126,13 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
         
         {/* Render tiles */}
         {tiles.map((tile) => {
-          const left = tile.x * CELL_SIZE + 2;
-          const top = tile.y * CELL_SIZE + 2;
+          const left = (tile.x - minX) * CELL_SIZE + 2;
+          const top = (tile.y - minY) * CELL_SIZE + 2;
           
           console.log(`Rendering tile ${tile.letter} at:`, {
             absolute: { x: tile.x, y: tile.y },
-            position: { left, top }
+            relative: { left, top },
+            gridBounds
           });
           
           return (
@@ -157,6 +160,51 @@ export const Board = ({ tiles, onTileDrop, readOnly }: BoardProps) => {
           </div>
         </TransformComponent>
       </TransformWrapper>
+      
+      {/* Expansion buttons */}
+      {!readOnly && (
+        <>
+          {/* Top expansion button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute top-2 left-1/2 transform -translate-x-1/2 z-20 bg-background/90 hover:bg-background"
+            onClick={() => expandGrid('top')}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          
+          {/* Bottom expansion button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute bottom-2 left-1/2 transform -translate-x-1/2 z-20 bg-background/90 hover:bg-background"
+            onClick={() => expandGrid('bottom')}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          
+          {/* Left expansion button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute left-2 top-1/2 transform -translate-y-1/2 z-20 bg-background/90 hover:bg-background"
+            onClick={() => expandGrid('left')}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          
+          {/* Right expansion button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 z-20 bg-background/90 hover:bg-background"
+            onClick={() => expandGrid('right')}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </>
+      )}
     </div>
   );
 };
