@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mixmo-mastery
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_SUPABASE_URL
+        value: your_supabase_url_here
+      - key: VITE_SUPABASE_ANON_KEY
+        value: your_supabase_anon_key_here
+    healthCheckPath: /
+    autoDeploy: true
+    branch: main
