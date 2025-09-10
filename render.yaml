@@ -3,7 +3,7 @@ services:
     name: mixmo-mastery
     env: node
     plan: free
-    buildCommand: chmod +x build.sh && ./build.sh
+    buildCommand: npm ci && ./node_modules/.bin/vite build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
